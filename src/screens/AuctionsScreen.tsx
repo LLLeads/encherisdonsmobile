@@ -17,7 +17,7 @@ export default function AuctionsScreen({ navigation }: Props) {
   const fetchAuctions = async () => {
     try {
       const res = await getAuctions({ lang: 'fr' });
-      setAuctions(res.data?.data || res.data || []);
+      setAuctions(res.data?.auction?.data || res.data?.data || res.data || []);
     } catch (e) {
       console.error(e);
     } finally {

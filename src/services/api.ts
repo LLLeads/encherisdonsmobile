@@ -37,13 +37,15 @@ async function request<T = any>(
 
 // ---- Auth ----
 export async function login(email: string, password: string) {
-  const data = await request('/api/login', {
+  const data = await request('/api/user/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
-  if (data.token) {
-    await SecureStore.setItemAsync('user_token', data.token);
-    await SecureStore.setItemAsync('user_data', JSON.stringify(data.data));
+  const token = data.data?.token || data.token;
+  const userData = data.data?.user || data.data;
+  if (token) {
+    await SecureStore.setItemAsync('user_token', token);
+    await SecureStore.setItemAsync('user_data', JSON.stringify(userData));
   }
   return data;
 }
@@ -57,7 +59,7 @@ export async function register(fields: {
   preferred_language?: string;
   referrer_id?: string;
 }) {
-  return request('/api/register', {
+  return request('/api/user/register', {
     method: 'POST',
     body: JSON.stringify(fields),
   });
@@ -76,15 +78,15 @@ export async function getUser() {
 // ---- Auctions ----
 export async function getAuctions(params?: Record<string, string>) {
   const query = params ? '?' + new URLSearchParams(params).toString() : '';
-  return request(`/api/product${query}`);
+  return request(`/api/auctions${query}`);
 }
 
 export async function getAuctionDetail(slug: string) {
-  return request(`/api/product/details/${slug}`);
+  return request(`/api/auction-details/${slug}`);
 }
 
 export async function placeBid(productId: number, amount: number) {
-  return request('/api/bid/store', {
+  return request('/api/user/bid/store', {
     method: 'POST',
     body: JSON.stringify({ product_id: productId, bid_amount: amount }),
   });
@@ -111,6 +113,25 @@ export async function joinDraw(drawId: number, referrerId?: string) {
 // ---- Home ----
 export async function getHomeData(lang: string = 'fr') {
   return request(`/api?lang=${lang}`);
+}
+
+// ---- Profile ----
+export async function getUserDetails() {
+  return request('/api/user/get-details');
+}
+
+export async function updateProfile(fields: Record<string, string>) {
+  return request('/api/user/profile-settings', {
+    method: 'POST',
+    body: JSON.stringify(fields),
+  });
+}
+
+export async function changePassword(oldPass: string, password: string, passwordConfirmation: string) {
+  return request('/api/user/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ old_pass: oldPass, password, password_confirmation: passwordConfirmation }),
+  });
 }
 
 // ---- General Settings / Menu ----
