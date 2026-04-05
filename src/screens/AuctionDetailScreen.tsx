@@ -1,36 +1,98 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useReducer } from 'react';
 import {
   View, Text, Image, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, TextInput,
 } from 'react-native';
 import { getAuctionDetail, placeBid } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Auction } from '../types';
 
-export default function AuctionDetailScreen({ route }: any) {
+const translations: Record<string, string> = {
+  'Bid has been placed successfully': 'Mise placée avec succès',
+  'Auction not found': 'Enchère introuvable',
+  'Auction is not started yet': "L'enchère n'a pas encore commencé",
+  'Auction is expired': "L'enchère est expirée",
+  'Bid amount must be greater than 0': 'Le montant doit être supérieur à 0',
+  'Bid amount must be greater than auction price': 'Le montant doit être supérieur au prix de l\'enchère',
+  'Bid amount must be greater than highest bid amount': 'Le montant doit être supérieur à la mise la plus élevée',
+  'You can not bid on your own auction': 'Vous ne pouvez pas miser sur votre propre enchère',
+  'You are already the highest bidder': 'Vous êtes déjà le plus offrant',
+  'You must be logged in to place a bid': 'Vous devez être connecté pour miser',
+  'You must have an active membership to place bids': 'Vous devez avoir une adhésion active pour miser',
+  'Your membership has expired. Please renew to place bids': 'Votre adhésion a expiré. Veuillez la renouveler pour miser',
+};
+
+function t(msg: string): string {
+  return translations[msg] || msg;
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
+}
+
+type State = {
+  auction: any;
+  loading: boolean;
+  bidAmount: number;
+  submitting: boolean;
+};
+
+type Action =
+  | { type: 'LOADED'; auction: any; bidAmount: number }
+  | { type: 'ERROR' }
+  | { type: 'SET_BID'; amount: number }
+  | { type: 'SUBMITTING'; value: boolean };
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'LOADED':
+      return { ...state, auction: action.auction, bidAmount: action.bidAmount, loading: false };
+    case 'ERROR':
+      return { ...state, loading: false };
+    case 'SET_BID':
+      return { ...state, bidAmount: action.amount };
+    case 'SUBMITTING':
+      return { ...state, submitting: action.value };
+    default:
+      return state;
+  }
+}
+
+export default function AuctionDetailScreen({ route, navigation }: any) {
   const { slug } = route.params;
   const { user } = useAuth();
-  const [auction, setAuction] = useState<Auction | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [bidAmount, setBidAmount] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
 
-  const fetchDetail = async () => {
-    try {
-      const res = await getAuctionDetail(slug);
-      const data = res.data;
-      setAuction(data);
-      const minBid = data.highest_bid > 0 ? data.highest_bid + 1 : Math.max(data.price, 1);
-      setBidAmount(minBid);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+  const [state, dispatch] = useReducer(reducer, {
+    auction: null,
+    loading: true,
+    bidAmount: 0,
+    submitting: false,
+  });
+
+  const { auction, loading, bidAmount, submitting } = state;
+
+  const fetchAndSet = () => {
+    getAuctionDetail(slug)
+      .then((res) => {
+        const d = res.data;
+        if (d) {
+          const hb = parseFloat(d.highest_bid) || 0;
+          const price = parseFloat(d.price) || 1;
+          dispatch({ type: 'LOADED', auction: d, bidAmount: hb > 0 ? hb + 1 : Math.max(price, 1) });
+        } else {
+          dispatch({ type: 'ERROR' });
+        }
+      })
+      .catch(() => dispatch({ type: 'ERROR' }));
   };
 
   useEffect(() => {
-    fetchDetail();
+    fetchAndSet();
   }, [slug]);
+
+
+  const handleMembershipPayment = () => {
+    navigation.navigate('MembershipPayment');
+  };
+
 
   const handleBid = async () => {
     if (!user) {
@@ -39,15 +101,33 @@ export default function AuctionDetailScreen({ route }: any) {
     }
     if (!auction || bidAmount <= 0) return;
 
-    setSubmitting(true);
+    dispatch({ type: 'SUBMITTING', value: true });
     try {
-      await placeBid(auction.id, bidAmount);
-      Alert.alert('Succès', 'Mise placée avec succès !');
-      fetchDetail();
+      const res = await placeBid(auction.id, bidAmount);
+      if (res.requires_membership) {
+        Alert.alert(
+          'Adhésion requise',
+          'Pour miser, vous devez avoir une adhésion active.',
+          [
+            { text: 'Annuler', style: 'cancel' },
+            { text: 'Payer maintenant', onPress: () => handleMembershipPayment() },
+          ]
+        );
+      } else if (res.status === false || res.status === 'error') {
+        Alert.alert('Erreur', t(res.message || res.error?.message || 'Échec de la mise.'));
+      } else {
+        Alert.alert('Succès', t(res.message || 'Mise placée avec succès !'));
+        const updated = await getAuctionDetail(slug);
+        if (updated.data) {
+          const hb = parseFloat(updated.data.highest_bid) || 0;
+          const price = parseFloat(updated.data.price) || 1;
+          dispatch({ type: 'LOADED', auction: updated.data, bidAmount: hb > 0 ? hb + 1 : Math.max(price, 1) });
+        }
+      }
     } catch (e: any) {
       Alert.alert('Erreur', e.message || 'Échec de la mise.');
     } finally {
-      setSubmitting(false);
+      dispatch({ type: 'SUBMITTING', value: false });
     }
   };
 
@@ -62,12 +142,15 @@ export default function AuctionDetailScreen({ route }: any) {
   if (!auction) {
     return (
       <View style={styles.center}>
-        <Text style={styles.emptyText}>Enchère introuvable.</Text>
+        <Text style={styles.emptyText}>Chargement de l'enchère...</Text>
+        <ActivityIndicator size="large" color="#dfbe79" style={{ marginTop: 16 }} />
       </View>
     );
   }
 
-  const minBid = auction.highest_bid > 0 ? auction.highest_bid + 1 : Math.max(auction.price, 1);
+  const minBid = (parseFloat(auction.highest_bid) || 0) > 0
+    ? parseFloat(auction.highest_bid) + 1
+    : Math.max(parseFloat(auction.price) || 1, 1);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scroll}>
@@ -85,7 +168,7 @@ export default function AuctionDetailScreen({ route }: any) {
           </View>
           <View style={styles.statBox}>
             <Text style={styles.statLabel}>Enchère la plus élevée</Text>
-            <Text style={styles.statValue}>$ {auction.highest_bid.toFixed(2)}</Text>
+            <Text style={styles.statValue}>$ {(parseFloat(auction.highest_bid) || 0).toFixed(2)}</Text>
           </View>
         </View>
 
@@ -98,12 +181,12 @@ export default function AuctionDetailScreen({ route }: any) {
         <View style={styles.bidPanel}>
           <Text style={styles.bidTitle}>MISER MAINTENANT</Text>
           <Text style={styles.bidInfo}>Enchère minimale: $ {minBid.toFixed(2)}</Text>
-          <Text style={styles.bidInfo}>Enchère la plus élevée: $ {auction.highest_bid.toFixed(2)}</Text>
+          <Text style={styles.bidInfo}>Enchère la plus élevée: $ {(parseFloat(auction.highest_bid) || 0).toFixed(2)}</Text>
 
           <View style={styles.bidRow}>
             <TouchableOpacity
               style={styles.bidBtn}
-              onPress={() => setBidAmount((v) => Math.max(1, v - 1))}
+              onPress={() => dispatch({ type: 'SET_BID', amount: Math.max(1, bidAmount - 1) })}
             >
               <Text style={styles.bidBtnText}>−</Text>
             </TouchableOpacity>
@@ -113,14 +196,14 @@ export default function AuctionDetailScreen({ route }: any) {
               value={`$ ${bidAmount.toFixed(2)}`}
               onChangeText={(t) => {
                 const num = parseFloat(t.replace(/[^0-9.]/g, ''));
-                if (!isNaN(num)) setBidAmount(num);
+                if (!isNaN(num)) dispatch({ type: 'SET_BID', amount: num });
               }}
               keyboardType="decimal-pad"
             />
 
             <TouchableOpacity
               style={styles.bidBtn}
-              onPress={() => setBidAmount((v) => v + 1)}
+              onPress={() => dispatch({ type: 'SET_BID', amount: bidAmount + 1 })}
             >
               <Text style={styles.bidBtnText}>+</Text>
             </TouchableOpacity>
@@ -142,10 +225,11 @@ export default function AuctionDetailScreen({ route }: any) {
         {auction.description ? (
           <View style={styles.descBox}>
             <Text style={styles.descTitle}>Description</Text>
-            <Text style={styles.descText}>{auction.description}</Text>
+            <Text style={styles.descText}>{stripHtml(auction.description)}</Text>
           </View>
         ) : null}
       </View>
+
     </ScrollView>
   );
 }
@@ -191,3 +275,4 @@ const styles = StyleSheet.create({
   descTitle: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 8 },
   descText: { fontSize: 14, color: 'rgba(255,255,255,.82)', lineHeight: 22 },
 });
+

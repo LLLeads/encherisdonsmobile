@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { User } from '../types';
 import * as api from '../services/api';
+import { setOnUnauthorized } from '../services/api';
 
 interface AuthState {
   user: User | null;
@@ -43,6 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     loadUser();
+    // When API returns 401, force logout and go to login screen
+    setOnUnauthorized(() => {
+      setUser(null);
+      setToken(null);
+    });
   }, []);
 
   const login = async (email: string, password: string) => {

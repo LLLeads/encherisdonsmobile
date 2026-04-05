@@ -2,6 +2,12 @@ import * as SecureStore from 'expo-secure-store';
 
 const API_BASE_URL = 'http://encheridonadmin.test'; // Change to production URL
 
+// Callback to force logout when session expires — set by AuthContext
+let onUnauthorized: (() => void) | null = null;
+export function setOnUnauthorized(cb: () => void) {
+  onUnauthorized = cb;
+}
+
 async function getToken(): Promise<string | null> {
   return await SecureStore.getItemAsync('user_token');
 }
@@ -25,6 +31,14 @@ async function request<T = any>(
     ...options,
     headers,
   });
+
+  if (res.status === 401) {
+    // Session expired — force logout and go to login
+    await SecureStore.deleteItemAsync('user_token');
+    await SecureStore.deleteItemAsync('user_data');
+    if (onUnauthorized) onUnauthorized();
+    return {} as T; // Return empty — the app will redirect to login
+  }
 
   const data = await res.json();
 
@@ -56,6 +70,12 @@ export async function register(fields: {
   email: string;
   password: string;
   password_confirmation: string;
+  phone: string;
+  address: string;
+  city: string;
+  province: string;
+  zip: string;
+  country?: string;
   preferred_language?: string;
   referrer_id?: string;
 }) {
@@ -85,11 +105,62 @@ export async function getAuctionDetail(slug: string) {
   return request(`/api/auction-details/${slug}`);
 }
 
-export async function placeBid(productId: number, amount: number) {
+export async function placeBid(auctionId: number, amount: number) {
   return request('/api/user/bid/store', {
     method: 'POST',
-    body: JSON.stringify({ product_id: productId, bid_amount: amount }),
+    body: JSON.stringify({ auction_id: auctionId, bid_amount: amount }),
   });
+}
+
+// ---- Membership ----
+export async function createMembershipPaymentIntent() {
+  return request('/api/user/membership/create-payment-intent', { method: 'POST' });
+}
+
+export async function confirmMembershipPayment(paymentId: number, paymentIntentId: string) {
+  return request('/api/user/membership/confirm-payment', {
+    method: 'POST',
+    body: JSON.stringify({ payment_id: paymentId, payment_intent_id: paymentIntentId }),
+  });
+}
+
+export async function chargeMembershipCard(cardNumber: string, expMonth: number, expYear: number, cvc: string) {
+  // Step 1: Get payment intent + publishable key from admin
+  const intentRes = await createMembershipPaymentIntent();
+  if (!intentRes.status) throw new Error(intentRes.message || 'Could not create payment');
+
+  const { client_secret, publishable_key, payment_id } = intentRes.data;
+
+  // Step 2: Create payment method directly with Stripe
+  const stripeRes = await fetch('https://api.stripe.com/v1/payment_methods', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${publishable_key}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: `type=card&card[number]=${cardNumber}&card[exp_month]=${expMonth}&card[exp_year]=${expYear}&card[cvc]=${cvc}`,
+  });
+  const pmData = await stripeRes.json();
+  if (pmData.error) throw new Error(pmData.error.message);
+
+  // Step 3: Confirm payment intent with Stripe
+  const confirmRes = await fetch(`https://api.stripe.com/v1/payment_intents/${client_secret.split('_secret_')[0]}/confirm`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${publishable_key}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: `payment_method=${pmData.id}`,
+  });
+  const confirmData = await confirmRes.json();
+  if (confirmData.error) throw new Error(confirmData.error.message);
+
+  if (confirmData.status !== 'succeeded') {
+    throw new Error('Payment was not completed.');
+  }
+
+  // Step 4: Tell admin to activate membership
+  return confirmMembershipPayment(payment_id, confirmData.id);
 }
 
 // ---- Draws ----
@@ -132,6 +203,11 @@ export async function changePassword(oldPass: string, password: string, password
     method: 'POST',
     body: JSON.stringify({ old_pass: oldPass, password, password_confirmation: passwordConfirmation }),
   });
+}
+
+// ---- Pages ----
+export async function getPage(slug: string) {
+  return request(`/api/pages-${slug}`);
 }
 
 // ---- General Settings / Menu ----

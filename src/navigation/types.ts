@@ -12,4 +12,5 @@ export type MainTabParamList = {
 export type RootStackParamList = {
   MainTabs: undefined;
   AuctionDetail: { slug: string };
+  MembershipPayment: undefined;
 };
