@@ -4,7 +4,7 @@ import {
   TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { getUserDetails, updateProfile, changePassword } from '../services/api';
+import { getUserDetails, updateProfile, changePassword, getDashboard } from '../services/api';
 
 type Section = 'profile' | 'edit' | 'password';
 
@@ -14,6 +14,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [details, setDetails] = useState<any>(null);
+  const [dashData, setDashData] = useState<any>(null);
 
   // Edit profile fields
   const [name, setName] = useState('');
@@ -34,9 +35,10 @@ export default function ProfileScreen() {
 
   const fetchDetails = async () => {
     try {
-      const res = await getUserDetails();
-      const u = res.data?.user;
+      const [userRes, dashRes] = await Promise.all([getUserDetails(), getDashboard()]);
+      const u = userRes.data?.user;
       setDetails(u);
+      setDashData(dashRes.data);
       if (u) {
         setName(u.name || '');
         setPhone(u.phone || '');
@@ -124,6 +126,31 @@ export default function ProfileScreen() {
               <Text style={styles.email}>{d?.email}</Text>
             </View>
 
+            {/* Membership Status */}
+            <View style={[styles.infoCard, {
+              borderColor: d?.membership_paid && d?.membership_expires_at ? '#2eb56b' : '#dfbe79',
+              borderWidth: 1,
+            }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{
+                  width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: d?.membership_paid && d?.membership_expires_at ? '#2eb56b' : '#dfbe79',
+                }}>
+                  <Text style={{ color: '#fff', fontSize: 18 }}>🛡</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Adhésion</Text>
+                  {d?.membership_paid && d?.membership_expires_at ? (
+                    <Text style={{ color: '#2eb56b', fontSize: 13 }}>
+                      Active — Expire le {new Date(d.membership_expires_at).toLocaleDateString('fr-CA')}
+                    </Text>
+                  ) : (
+                    <Text style={{ color: '#dfbe79', fontSize: 13 }}>Aucune adhésion active</Text>
+                  )}
+                </View>
+              </View>
+            </View>
+
             <View style={styles.infoCard}>
               <InfoRow label="Nom d'utilisateur" value={d?.username} />
               <InfoRow label="Téléphone" value={d?.phone} />
@@ -133,6 +160,25 @@ export default function ProfileScreen() {
               <InfoRow label="Province" value={d?.province} />
               <InfoRow label="Pays" value={d?.country} />
             </View>
+
+            {/* Recent Transactions */}
+            {dashData?.transactions?.data && dashData.transactions.data.length > 0 && (
+              <View style={styles.infoCard}>
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 16 }}>Transactions récentes</Text>
+                {dashData.transactions.data.map((tx: any, i: number) => (
+                  <View key={i} style={{ borderBottomWidth: i < dashData.transactions.data.length - 1 ? 1 : 0, borderBottomColor: 'rgba(255,255,255,.08)', paddingBottom: 12, marginBottom: 12 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={{ color: 'rgba(255,255,255,.65)', fontSize: 13 }}>{tx.date || tx.created_at}</Text>
+                      <Text style={{ color: tx.type === '+' ? '#2eb56b' : '#FF4E59', fontSize: 15, fontWeight: '700' }}>
+                        {tx.type === '+' ? '+' : '-'} $ {parseFloat(tx.amount || 0).toFixed(2)}
+                      </Text>
+                    </View>
+                    <Text style={{ color: 'rgba(255,255,255,.82)', fontSize: 14 }} numberOfLines={1}>{tx.details || tx.remark || ''}</Text>
+                    <Text style={{ color: 'rgba(255,255,255,.4)', fontSize: 12, marginTop: 2 }}>ID: {tx.trnx || tx.id}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
 
             <TouchableOpacity style={styles.primaryBtn} onPress={() => setSection('edit')}>
               <Text style={styles.primaryBtnText}>Modifier le profil</Text>

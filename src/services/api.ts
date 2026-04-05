@@ -186,6 +186,11 @@ export async function getHomeData(lang: string = 'fr') {
   return request(`/api?lang=${lang}`);
 }
 
+// ---- Dashboard ----
+export async function getDashboard() {
+  return request('/api/user/dashboard');
+}
+
 // ---- Profile ----
 export async function getUserDetails() {
   return request('/api/user/get-details');
