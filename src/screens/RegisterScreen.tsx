@@ -77,7 +77,7 @@ export default function RegisterScreen({ navigation }: Props) {
     }
     setLoading(true);
     try {
-      await register({
+      const res = await register({
         name,
         username,
         email,
@@ -91,9 +91,22 @@ export default function RegisterScreen({ navigation }: Props) {
         country,
         preferred_language: 'fr',
       });
-      Alert.alert('Succès', 'Inscription réussie ! Veuillez vérifier votre courriel.', [
-        { text: 'OK', onPress: () => navigation.navigate('Login') },
-      ]);
+
+      if (res.status === false) {
+        // Parse validation errors from API
+        const errors = res.error || {};
+        if (typeof errors === 'object' && !errors.message) {
+          // Validation errors like { email: ["already taken"], username: ["already taken"] }
+          const messages = Object.values(errors).flat().join('\n');
+          Alert.alert('Erreur', messages || "Échec de l'inscription.");
+        } else {
+          Alert.alert('Erreur', errors.message || res.message || "Échec de l'inscription.");
+        }
+      } else {
+        Alert.alert('Succès', 'Inscription réussie ! Veuillez vérifier votre courriel.', [
+          { text: 'OK', onPress: () => navigation.navigate('Login') },
+        ]);
+      }
     } catch (e: any) {
       Alert.alert('Erreur', e.message || "Échec de l'inscription.");
     } finally {
