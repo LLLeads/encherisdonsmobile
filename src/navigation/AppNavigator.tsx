@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, View, Text } from 'react-native';
+import { ActivityIndicator, View, Text, TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -12,26 +12,20 @@ import AuctionsScreen from '../screens/AuctionsScreen';
 import AuctionDetailScreen from '../screens/AuctionDetailScreen';
 import DrawScreen from '../screens/DrawScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-// MembershipPaymentScreen requires native Stripe SDK (custom build only)
-// In Expo Go, show a fallback screen
-let MembershipPaymentScreen: React.ComponentType<any>;
-try {
-  MembershipPaymentScreen = require('../screens/MembershipPaymentScreen').default;
-} catch {
-  MembershipPaymentScreen = ({ navigation }: any) => {
-    const { View, Text, TouchableOpacity } = require('react-native');
-    return (
-      <View style={{ flex: 1, backgroundColor: '#07162f', justifyContent: 'center', padding: 24 }}>
-        <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700', marginBottom: 12, textAlign: 'center' }}>Adhésion requise</Text>
-        <Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 24 }}>
-          Le paiement natif nécessite une version compilée de l'application. Veuillez utiliser le site web pour compléter votre adhésion.
-        </Text>
-        <TouchableOpacity style={{ borderRadius: 999, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,.2)' }} onPress={() => navigation.goBack()}>
-          <Text style={{ color: 'rgba(255,255,255,.65)', fontWeight: '600' }}>Retour</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
+
+// Fallback screen for Expo Go (native Stripe SDK not available)
+function MembershipFallbackScreen({ navigation }: any) {
+  return (
+    <View style={{ flex: 1, backgroundColor: '#07162f', justifyContent: 'center', padding: 24 }}>
+      <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700', marginBottom: 12, textAlign: 'center' }}>Adhésion requise</Text>
+      <Text style={{ color: 'rgba(255,255,255,.7)', fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 24 }}>
+        Le paiement natif nécessite une version compilée de l'application. Veuillez utiliser le site web pour compléter votre adhésion.
+      </Text>
+      <TouchableOpacity style={{ borderRadius: 999, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,.2)' }} onPress={() => navigation.goBack()}>
+        <Text style={{ color: 'rgba(255,255,255,.65)', fontWeight: '600' }}>Retour</Text>
+      </TouchableOpacity>
+    </View>
+  );
 }
 
 const AuthStack = createStackNavigator<AuthStackParamList>();
@@ -106,7 +100,7 @@ function MainNavigator() {
     >
       <RootStack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
       <RootStack.Screen name="AuctionDetail" component={AuctionDetailScreen} options={{ title: "Détail de l'enchère", headerBackTitle: 'Retour' }} />
-      <RootStack.Screen name="MembershipPayment" component={MembershipPaymentScreen} options={{ title: 'Adhésion', headerBackTitle: 'Retour' }} />
+      <RootStack.Screen name="MembershipPayment" component={MembershipFallbackScreen} options={{ title: 'Adhésion', headerBackTitle: 'Retour' }} />
     </RootStack.Navigator>
   );
 }

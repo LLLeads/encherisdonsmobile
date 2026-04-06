@@ -43,6 +43,11 @@ async function request<T = any>(
   const data = await res.json();
 
   if (!res.ok) {
+    // For validation errors (422), include specific field messages
+    if (res.status === 422 && data?.errors) {
+      const fieldErrors = Object.values(data.errors).flat().join('\n');
+      throw new Error(fieldErrors || data?.message || 'Validation failed');
+    }
     throw new Error(data?.message || data?.error?.message || 'Request failed');
   }
 

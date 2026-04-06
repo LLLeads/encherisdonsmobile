@@ -1,11 +1,21 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, Image, StyleSheet, ActivityIndicator, RefreshControl,
+  Modal, Linking,
 } from 'react-native';
-import { getAuctions } from '../services/api';
+import { getAuctions, getDashboard } from '../services/api';
 import { Auction } from '../types';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MainTabParamList } from '../navigation/types';
+
+type UnpaidOrder = {
+  id: number;
+  auction_title: string;
+  auction_title_fr: string;
+  auction_image: string | null;
+  bid_amount: number;
+  payment_url: string;
+};
 
 type Props = NativeStackScreenProps<MainTabParamList, 'Auctions'>;
 
@@ -13,6 +23,22 @@ export default function AuctionsScreen({ navigation }: Props) {
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [unpaidOrders, setUnpaidOrders] = useState<UnpaidOrder[]>([]);
+  const [showPaymentPopup, setShowPaymentPopup] = useState(false);
+
+  // Check for unpaid winner orders on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await getDashboard();
+        const orders = res.data?.unpaid_orders || [];
+        if (orders.length > 0) {
+          setUnpaidOrders(orders);
+          setShowPaymentPopup(true);
+        }
+      } catch (_) {}
+    })();
+  }, []);
 
   const fetchAuctions = async () => {
     try {
@@ -104,6 +130,47 @@ export default function AuctionsScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
+      {/* Unpaid Winner Payment Popup */}
+      <Modal visible={showPaymentPopup} transparent animationType="fade">
+        <View style={styles.popupOverlay}>
+          <View style={styles.popupCard}>
+            <View style={styles.popupHeader}>
+              <Text style={styles.popupHeaderTitle}>🏆 Félicitations !</Text>
+              <Text style={styles.popupHeaderSub}>Vous avez gagné une enchère ! Veuillez compléter votre paiement.</Text>
+            </View>
+            <View style={styles.popupBody}>
+              {unpaidOrders.map((order) => (
+                <View key={order.id} style={styles.popupOrder}>
+                  {order.auction_image ? (
+                    <Image source={{ uri: order.auction_image }} style={styles.popupOrderImage} />
+                  ) : null}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.popupOrderTitle} numberOfLines={1}>
+                      {order.auction_title_fr || order.auction_title}
+                    </Text>
+                    <Text style={styles.popupOrderBid}>
+                      Enchère gagnante : <Text style={{ fontWeight: '700', color: '#07162f' }}>${order.bid_amount?.toFixed(2)}</Text>
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.popupPayBtn}
+                    onPress={() => {
+                      setShowPaymentPopup(false);
+                      Linking.openURL(order.payment_url);
+                    }}
+                  >
+                    <Text style={styles.popupPayBtnText}>Payer</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+            <TouchableOpacity style={styles.popupDismiss} onPress={() => setShowPaymentPopup(false)}>
+              <Text style={styles.popupDismissText}>Me rappeler plus tard</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <FlatList
         data={sortedAuctions}
         keyExtractor={(item) => item.id.toString()}
@@ -151,4 +218,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#dfbe79', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4,
   },
   upcomingBadgeText: { color: '#07162f', fontSize: 12, fontWeight: '700' },
+  // Payment popup styles
+  popupOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,.65)', justifyContent: 'center', padding: 20 },
+  popupCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden' },
+  popupHeader: { backgroundColor: '#07162f', padding: 20 },
+  popupHeaderTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  popupHeaderSub: { color: 'rgba(255,255,255,.7)', fontSize: 14, marginTop: 6 },
+  popupBody: { padding: 16 },
+  popupOrder: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#e5e7eb', marginBottom: 10 },
+  popupOrderImage: { width: 54, height: 54, borderRadius: 10 },
+  popupOrderTitle: { fontSize: 15, fontWeight: '700', color: '#1f2937' },
+  popupOrderBid: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  popupPayBtn: { backgroundColor: '#dfbe79', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
+  popupPayBtnText: { color: '#07162f', fontWeight: '700', fontSize: 13 },
+  popupDismiss: { borderTopWidth: 1, borderTopColor: '#e5e7eb', paddingVertical: 14, alignItems: 'center' },
+  popupDismissText: { color: '#9ca3af', fontSize: 14, fontWeight: '500' },
 });
