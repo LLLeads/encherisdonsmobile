@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView,
   TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
+  Image, Linking,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { getUserDetails, updateProfile, changePassword, getDashboard } from '../services/api';
@@ -125,6 +126,40 @@ export default function ProfileScreen() {
               <Text style={styles.name}>{d?.name}</Text>
               <Text style={styles.email}>{d?.email}</Text>
             </View>
+
+            {/* Unpaid Winner Orders */}
+            {dashData?.unpaid_orders && dashData.unpaid_orders.length > 0 && (
+              <View style={[styles.infoCard, { borderColor: '#e74c3c', borderWidth: 1.5, backgroundColor: 'rgba(231,76,60,.12)' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#e74c3c', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>!</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#e74c3c', fontWeight: '700', fontSize: 16 }}>Paiement requis</Text>
+                    <Text style={{ color: 'rgba(231,76,60,.8)', fontSize: 12 }}>Vous avez gagné des enchère(s) qui nécessitent un paiement.</Text>
+                  </View>
+                </View>
+                {dashData.unpaid_orders.map((order: any) => (
+                  <View key={order.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,.08)', marginBottom: 8, borderWidth: 1, borderColor: 'rgba(231,76,60,.25)' }}>
+                    {order.auction_image ? (
+                      <Image source={{ uri: order.auction_image }} style={{ width: 48, height: 48, borderRadius: 8 }} />
+                    ) : null}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }} numberOfLines={1}>{order.auction_title_fr || order.auction_title}</Text>
+                      <Text style={{ color: 'rgba(255,255,255,.6)', fontSize: 12, marginTop: 2 }}>
+                        Enchère gagnante: <Text style={{ color: '#dfbe79', fontWeight: '700' }}>${order.bid_amount?.toFixed(2)}</Text>
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#dfbe79', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 }}
+                      onPress={() => Linking.openURL(order.payment_url)}
+                    >
+                      <Text style={{ color: '#07162f', fontWeight: '700', fontSize: 12 }}>Payer</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
 
             {/* Membership Status */}
             <View style={[styles.infoCard, {

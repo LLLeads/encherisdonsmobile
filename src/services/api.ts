@@ -110,10 +110,15 @@ export async function getAuctionDetail(slug: string) {
   return request(`/api/auction-details/${slug}`);
 }
 
-export async function placeBid(auctionId: number, amount: number) {
+export async function placeBid(auctionId: number, amount: number, autoBidEnabled?: boolean, autoBidMax?: number) {
   return request('/api/user/bid/store', {
     method: 'POST',
-    body: JSON.stringify({ auction_id: auctionId, bid_amount: amount }),
+    body: JSON.stringify({
+      auction_id: auctionId,
+      bid_amount: amount,
+      auto_bid_enabled: autoBidEnabled || false,
+      auto_bid_max: autoBidEnabled ? autoBidMax : null,
+    }),
   });
 }
 

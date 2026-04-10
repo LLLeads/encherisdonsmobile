@@ -1,6 +1,6 @@
-import React, { useEffect, useReducer } from 'react';
+import React, { useEffect, useReducer, useState } from 'react';
 import {
-  View, Text, Image, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, TextInput,
+  View, Text, Image, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, TextInput, Switch, Modal,
 } from 'react-native';
 import { getAuctionDetail, placeBid } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -68,6 +68,9 @@ export default function AuctionDetailScreen({ route, navigation }: any) {
   });
 
   const { auction, loading, bidAmount, submitting } = state;
+  const [autoBidEnabled, setAutoBidEnabled] = useState(false);
+  const [autoBidMax, setAutoBidMax] = useState('');
+  const [showBidHistory, setShowBidHistory] = useState(false);
 
   const fetchAndSet = () => {
     getAuctionDetail(slug)
@@ -103,7 +106,8 @@ export default function AuctionDetailScreen({ route, navigation }: any) {
 
     dispatch({ type: 'SUBMITTING', value: true });
     try {
-      const res = await placeBid(auction.id, bidAmount);
+      const maxVal = parseFloat(autoBidMax) || 0;
+      const res = await placeBid(auction.id, bidAmount, autoBidEnabled, autoBidEnabled ? maxVal : undefined);
       if (res.requires_membership) {
         Alert.alert(
           'Adhésion requise',
@@ -177,6 +181,66 @@ export default function AuctionDetailScreen({ route, navigation }: any) {
           <Text style={styles.statValue}>{auction.end_date}</Text>
         </View>
 
+        {/* Leading Bidder */}
+        {auction.leading_bidder && (
+          <TouchableOpacity
+            style={styles.leaderCard}
+            onPress={auction.auction_history?.length > 0 ? () => setShowBidHistory(true) : undefined}
+            activeOpacity={auction.auction_history?.length > 0 ? 0.7 : 1}
+          >
+            {auction.leading_bidder.photo ? (
+              <Image source={{ uri: auction.leading_bidder.photo }} style={styles.leaderPhoto} />
+            ) : (
+              <View style={styles.leaderAvatar}>
+                <Text style={styles.leaderAvatarText}>{(auction.leading_bidder.name || '?').charAt(0).toUpperCase()}</Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.leaderLabel}>Mise plus élevée</Text>
+              <Text style={styles.leaderName}>{auction.leading_bidder.username}</Text>
+            </View>
+            <Text style={styles.leaderAmount}>${(parseFloat(auction.highest_bid) || 0).toFixed(2)}</Text>
+            {auction.auction_history?.length > 0 && (
+              <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 10 }}>Voir plus →</Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {/* Bid History Modal */}
+        <Modal visible={showBidHistory} transparent animationType="fade">
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,.65)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+            <View style={{ backgroundColor: '#fff', borderRadius: 16, width: '100%', maxWidth: 420, maxHeight: '80%', overflow: 'hidden' }}>
+              <View style={{ backgroundColor: '#07162f', padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700', flex: 1 }} numberOfLines={1}>Historique — {auction.title}</Text>
+                <TouchableOpacity onPress={() => setShowBidHistory(false)}>
+                  <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 24 }}>×</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={{ padding: 12 }}>
+                {auction.auction_history?.map((bh: any, i: number) => (
+                  <View key={bh.id || i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: i < (auction.auction_history?.length || 0) - 1 ? 1 : 0, borderBottomColor: '#f0f0f0' }}>
+                    {bh.bidder_photo ? (
+                      <Image source={{ uri: bh.bidder_photo }} style={{ width: 38, height: 38, borderRadius: 19 }} />
+                    ) : (
+                      <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: i === 0 ? '#dfbe79' : '#e5e7eb', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontWeight: '700', fontSize: 14, color: i === 0 ? '#07162f' : '#6b7280' }}>{(bh.bidder || '?').charAt(0).toUpperCase()}</Text>
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={{ fontWeight: '700', fontSize: 14, color: '#1f2937' }}>{bh.bidder}</Text>
+                        {i === 0 && <View style={{ backgroundColor: '#dfbe79', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}><Text style={{ color: '#07162f', fontSize: 10, fontWeight: '700' }}>En tête</Text></View>}
+                      </View>
+                      <Text style={{ color: '#9ca3af', fontSize: 12 }}>{bh.bid_date} {bh.bid_time || ''}</Text>
+                    </View>
+                    <Text style={{ fontWeight: '700', fontSize: 16, color: i === 0 ? '#b8860b' : '#1f2937' }}>${parseFloat(bh.bid_amount || 0).toFixed(2)}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
         {/* Bid Form */}
         <View style={styles.bidPanel}>
           <Text style={styles.bidTitle}>MISER MAINTENANT</Text>
@@ -220,7 +284,63 @@ export default function AuctionDetailScreen({ route, navigation }: any) {
               )}
             </TouchableOpacity>
           </View>
+
+          {/* Auto-Bid Toggle */}
+          <View style={styles.autoBidBox}>
+            <View style={styles.autoBidHeader}>
+              <Text style={styles.autoBidLabel}>Mise automatique</Text>
+              <Switch
+                value={autoBidEnabled}
+                onValueChange={setAutoBidEnabled}
+                trackColor={{ false: 'rgba(255,255,255,.2)', true: '#dfbe79' }}
+                thumbColor="#fff"
+              />
+            </View>
+            {autoBidEnabled && (
+              <View style={{ marginTop: 10 }}>
+                <Text style={styles.autoBidDesc}>Montant maximum</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>$</Text>
+                  <TextInput
+                    style={styles.autoBidInput}
+                    value={autoBidMax}
+                    onChangeText={setAutoBidMax}
+                    keyboardType="decimal-pad"
+                    placeholder="Entrer le montant max"
+                    placeholderTextColor="rgba(255,255,255,.35)"
+                  />
+                </View>
+                <Text style={styles.autoBidHint}>Le système misera automatiquement jusqu'à ce montant lorsque quelqu'un vous surenchérit.</Text>
+              </View>
+            )}
+          </View>
         </View>
+
+        {/* Bid History */}
+        {auction.auction_history && auction.auction_history.length > 0 && (
+          <View style={styles.historyBox}>
+            <Text style={styles.historyTitle}>Historique des enchères</Text>
+            {auction.auction_history.map((bid: any, i: number) => (
+              <View key={bid.id || i} style={[styles.historyRow, i === 0 && styles.historyRowLeader]}>
+                {bid.bidder_photo ? (
+                  <Image source={{ uri: bid.bidder_photo }} style={styles.historyPhoto} />
+                ) : (
+                  <View style={[styles.historyAvatar, i === 0 && { backgroundColor: '#dfbe79' }]}>
+                    <Text style={[styles.historyAvatarText, i === 0 && { color: '#07162f' }]}>{(bid.bidder || '?').charAt(0).toUpperCase()}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.historyBidder}>{bid.bidder}</Text>
+                    {i === 0 && <View style={styles.leaderBadge}><Text style={styles.leaderBadgeText}>En tête</Text></View>}
+                  </View>
+                  <Text style={styles.historyDate}>{bid.bid_date} {bid.bid_time || ''}</Text>
+                </View>
+                <Text style={[styles.historyAmount, i === 0 && { color: '#dfbe79' }]}>${parseFloat(bid.bid_amount || 0).toFixed(2)}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {auction.description ? (
           <View style={styles.descBox}>
@@ -274,5 +394,32 @@ const styles = StyleSheet.create({
   descBox: { marginTop: 20 },
   descTitle: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 8 },
   descText: { fontSize: 14, color: 'rgba(255,255,255,.82)', lineHeight: 22 },
+  autoBidBox: { marginTop: 14, padding: 14, borderRadius: 12, backgroundColor: 'rgba(255,255,255,.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,.12)' },
+  autoBidHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  autoBidLabel: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  autoBidDesc: { color: 'rgba(255,255,255,.65)', fontSize: 13 },
+  autoBidInput: { flex: 1, backgroundColor: 'rgba(255,255,255,.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,.15)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 16, fontWeight: '600' },
+  autoBidHint: { color: 'rgba(255,255,255,.4)', fontSize: 11, marginTop: 8, lineHeight: 16 },
+  // Leading bidder
+  leaderCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, marginBottom: 14, backgroundColor: 'rgba(223,190,121,.1)', borderWidth: 1, borderColor: 'rgba(223,190,121,.25)' },
+  leaderPhoto: { width: 40, height: 40, borderRadius: 20 },
+  leaderAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#dfbe79', alignItems: 'center', justifyContent: 'center' },
+  leaderAvatarText: { color: '#07162f', fontWeight: '700', fontSize: 16 },
+  leaderLabel: { color: '#dfbe79', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  leaderName: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  leaderAmount: { color: '#dfbe79', fontWeight: '700', fontSize: 18 },
+  // Bid history
+  historyBox: { marginTop: 16, padding: 16, borderRadius: 16, backgroundColor: 'rgba(255,255,255,.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,.12)' },
+  historyTitle: { color: '#fff', fontSize: 17, fontWeight: '700', marginBottom: 14 },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,.08)' },
+  historyRowLeader: { borderBottomColor: 'rgba(223,190,121,.15)' },
+  historyPhoto: { width: 36, height: 36, borderRadius: 18 },
+  historyAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,.15)', alignItems: 'center', justifyContent: 'center' },
+  historyAvatarText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  historyBidder: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  leaderBadge: { backgroundColor: '#dfbe79', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 },
+  leaderBadgeText: { color: '#07162f', fontSize: 10, fontWeight: '700' },
+  historyDate: { color: 'rgba(255,255,255,.4)', fontSize: 12, marginTop: 1 },
+  historyAmount: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });
 
